@@ -1,1 +1,5 @@
-
+streamlit
+llama-cloud-services
+pydantic
+pandas
+python-dotenv
