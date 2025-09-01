@@ -3,3 +3,4 @@ llama-cloud-services
 pydantic
 pandas
 python-dotenv
+requests>=2.31.0
