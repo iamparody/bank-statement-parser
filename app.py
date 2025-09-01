@@ -224,7 +224,7 @@ if uploaded_file is not None:
     else:
         with st.spinner("🔄 Processing your statement..."):
            extracted_data = extract_statement_data(file_hash, _file_content=file_bytes, _filename=uploaded_file.name)
-            if extracted_data:
+           if extracted_data:
                 st.session_state["last_file_hash"] = file_hash
                 st.session_state["cached_data"] = extracted_data
 
