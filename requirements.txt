@@ -4,3 +4,4 @@ pydantic
 pandas
 python-dotenv
 requests>=2.31.0
+plotly>=5.17.0
