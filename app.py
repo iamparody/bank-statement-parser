@@ -1,7 +1,7 @@
 import streamlit as st
 from llama_cloud_services import LlamaExtract
 from llama_cloud_services.extract import ExtractConfig, ExtractTarget, ExtractMode
-from llama_cloud_services.core.api_error import ApiError
+from llama_cloud_services.extract.errors import ApiError
 from pydantic import BaseModel, Field
 from typing import List
 import pandas as pd
