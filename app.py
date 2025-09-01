@@ -178,10 +178,9 @@ if not agent:
 
 @st.cache_data(show_spinner="🔍 Extracting data from your statement...")
 def extract_statement_data(file_hash: str, *, _file_content: bytes, _filename: str) -> dict:
-
     try:
-        file_extension = os.path.splitext(filename)[1].lower()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(_filename)[1].lower()) as tmp_file:
+        file_extension = os.path.splitext(_filename)[1].lower()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
             tmp_file.write(_file_content)
             tmp_file_path = tmp_file.name
         
@@ -224,7 +223,7 @@ if uploaded_file is not None:
         st.info("📋 Using cached extraction results")
     else:
         with st.spinner("🔄 Processing your statement..."):
-            extracted_data = extract_statement_data(file_hash, file_content=file_bytes, filename=uploaded_file.name)
+           extracted_data = extract_statement_data(file_hash, _file_content=file_bytes, _filename=uploaded_file.name)
             if extracted_data:
                 st.session_state["last_file_hash"] = file_hash
                 st.session_state["cached_data"] = extracted_data
