@@ -26,7 +26,8 @@ api_key = st.secrets["LLAMA_API_KEY"]
 # Initialize the extractor (cache this to avoid re-initializing on every rerun)
 @st.cache_resource
 def get_agent():
-    extractor = LlamaExtract(api_key=api_key)
+    import streamlit as st
+    extractor = LlamaExtract(api_key=st.secrets["LLAMA_API_KEY"])
     config = ExtractConfig(
         extraction_target=ExtractTarget.PER_DOC,
         extraction_mode=ExtractMode.MULTIMODAL
