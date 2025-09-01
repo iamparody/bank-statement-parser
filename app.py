@@ -9,6 +9,8 @@ import os
 import tempfile
 from datetime import datetime
 import re
+import plotly.express as px
+import plotly.graph_objects as go
 
 # ---------------------------
 # 🔹 Page Configuration
@@ -184,18 +186,18 @@ if not agent:
     st.stop()
 
 # ---------------------------
-# 🔹 Enhanced Extraction Function
+# 🔹 Enhanced Extraction Function (Fixed Caching)
 # ---------------------------
 
 @st.cache_data(show_spinner="🔍 Extracting data from your statement...")
-def extract_statement_data(file_bytes: bytes, filename: str) -> dict:
-    """Extract data from uploaded statement file"""
+def extract_statement_data(file_hash: str, file_content: bytes, filename: str) -> dict:
+    """Extract data from uploaded statement file using file hash for caching"""
     try:
         # Create temporary file with proper extension
         file_extension = os.path.splitext(filename)[1].lower()
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
-            tmp_file.write(file_bytes)
+            tmp_file.write(file_content)
             tmp_file_path = tmp_file.name
         
         try:
@@ -243,7 +245,8 @@ if uploaded_file is not None:
         st.info("📋 Using cached extraction results")
     else:
         with st.spinner("🔄 Processing your statement..."):
-            extracted_data = extract_statement_data(file_bytes, uploaded_file.name)
+            # Pass file hash and bytes separately to fix caching issue
+            extracted_data = extract_statement_data(file_hash, file_bytes, uploaded_file.name)
             if extracted_data:
                 st.session_state["last_file_hash"] = file_hash
                 st.session_state["cached_data"] = extracted_data
@@ -353,13 +356,13 @@ if uploaded_file is not None:
                         f"{currency_symbol}{closing_balance:,.2f}"
                     )
                 
-                # Enhanced Visualizations using Streamlit's built-in charts
+                # Enhanced Visualizations with Plotly
                 st.subheader("📊 Transaction Analysis")
                 
                 tab1, tab2, tab3 = st.tabs(["💹 Flow Analysis", "📈 Balance Trend", "🏷️ Categories"])
                 
                 with tab1:
-                    # Debit vs Credit comparison
+                    # Debit vs Credit comparison using Plotly
                     st.markdown("**💰 Cash Flow Overview**")
                     
                     # Create comparison metrics
@@ -369,27 +372,61 @@ if uploaded_file is not None:
                     with flow_col2:
                         st.metric("❤️ Total Debits (Outflow)", f"{currency_symbol}{total_debits:,.2f}")
                     with flow_col3:
-                        net_color = "normal" if net_flow >= 0 else "inverse"
                         st.metric("🔄 Net Flow", f"{currency_symbol}{net_flow:,.2f}")
                     
-                    # Simple bar chart for flow comparison
-                    if total_credits > 0 or total_debits > 0:
-                        flow_data = pd.DataFrame({
-                            'Credits': [total_credits],
-                            'Debits': [total_debits]
-                        })
-                        st.bar_chart(flow_data)
+                    # Enhanced Plotly bar chart
+                    flow_fig = go.Figure(data=[
+                        go.Bar(
+                            name='Credits', 
+                            x=['Inflow'], 
+                            y=[total_credits], 
+                            marker_color='#00CC88',
+                            text=[f'{currency_symbol}{total_credits:,.2f}'],
+                            textposition='auto'
+                        ),
+                        go.Bar(
+                            name='Debits', 
+                            x=['Outflow'], 
+                            y=[total_debits], 
+                            marker_color='#FF6B6B',
+                            text=[f'{currency_symbol}{total_debits:,.2f}'],
+                            textposition='auto'
+                        )
+                    ])
+                    flow_fig.update_layout(
+                        title="Cash Flow Comparison",
+                        yaxis_title=f"Amount ({currency_symbol})",
+                        barmode='group',
+                        height=400,
+                        showlegend=True
+                    )
+                    st.plotly_chart(flow_fig, use_container_width=True)
                 
                 with tab2:
                     if len(df) > 1:
-                        # Balance trend over time using Streamlit line chart
+                        # Balance trend over time using Plotly
                         st.markdown("**📈 Account Balance Trend**")
                         
-                        # Prepare data for line chart
-                        balance_chart_data = df[['date', 'balance']].copy()
-                        balance_chart_data = balance_chart_data.set_index('date')
+                        # Create enhanced line chart
+                        balance_fig = go.Figure()
+                        balance_fig.add_trace(go.Scatter(
+                            x=df['date'],
+                            y=df['balance'],
+                            mode='lines+markers',
+                            name='Balance',
+                            line=dict(color='#4A90E2', width=3),
+                            marker=dict(size=8),
+                            hovertemplate='<b>Date:</b> %{x}<br><b>Balance:</b> ' + f'{currency_symbol}' + '%{y:,.2f}<extra></extra>'
+                        ))
                         
-                        st.line_chart(balance_chart_data['balance'])
+                        balance_fig.update_layout(
+                            title='Account Balance Over Time',
+                            xaxis_title='Date',
+                            yaxis_title=f'Balance ({currency_symbol})',
+                            height=400,
+                            hovermode='x unified'
+                        )
+                        st.plotly_chart(balance_fig, use_container_width=True)
                         
                         # Show balance statistics
                         min_balance = df['balance'].min()
@@ -407,7 +444,7 @@ if uploaded_file is not None:
                         st.info("📊 Balance trend requires more than one transaction")
                 
                 with tab3:
-                    # Transaction categories (simple keyword-based)
+                    # Transaction categories with enhanced Plotly visualization
                     st.markdown("**🏷️ Transaction Analysis**")
                     
                     # Show top descriptions
@@ -416,20 +453,47 @@ if uploaded_file is not None:
                         if not desc_counts.empty:
                             st.markdown("**Most Frequent Transaction Types:**")
                             
-                            # Display as a simple table
+                            # Enhanced horizontal bar chart
+                            cat_fig = go.Figure(go.Bar(
+                                x=desc_counts.values,
+                                y=desc_counts.index,
+                                orientation='h',
+                                marker_color='#9B59B6',
+                                text=desc_counts.values,
+                                textposition='auto'
+                            ))
+                            cat_fig.update_layout(
+                                title="Top Transaction Types",
+                                xaxis_title="Frequency",
+                                yaxis_title="Transaction Type",
+                                height=400
+                            )
+                            st.plotly_chart(cat_fig, use_container_width=True)
+                            
+                            # Display as a table too
                             freq_df = pd.DataFrame({
                                 'Transaction Type': desc_counts.index,
                                 'Frequency': desc_counts.values
                             })
                             st.dataframe(freq_df, use_container_width=True)
-                            
-                            # Simple bar chart
-                            st.bar_chart(desc_counts)
                         
-                        # Transaction count by type
-                        st.markdown("**📊 Transaction Statistics:**")
+                        # Transaction count by type with pie chart
+                        st.markdown("**📊 Transaction Distribution:**")
                         debit_count = len(df[df['debit'] > 0])
                         credit_count = len(df[df['credit'] > 0])
+                        
+                        if debit_count > 0 or credit_count > 0:
+                            pie_fig = go.Figure(data=[go.Pie(
+                                labels=['Debit Transactions', 'Credit Transactions'],
+                                values=[debit_count, credit_count],
+                                hole=.3,
+                                marker_colors=['#FF6B6B', '#00CC88']
+                            )])
+                            pie_fig.update_layout(
+                                title="Transaction Type Distribution",
+                                height=400
+                            )
+                            st.plotly_chart(pie_fig, use_container_width=True)
                         
                         count_col1, count_col2, count_col3 = st.columns(3)
                         with count_col1:
