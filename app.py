@@ -7,8 +7,6 @@ import pandas as pd
 import hashlib
 import os
 import tempfile
-import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
 import re
 
@@ -48,25 +46,36 @@ class Statement(BaseModel):
 # 🔹 Utility Functions
 # ---------------------------
 
-def clean_currency_value(value: str) -> float:
+def clean_currency_value(value) -> float:
     """Clean and convert currency strings to float values"""
-    if pd.isna(value) or value is None or value == "":
+    # Handle None, NaN, or empty values
+    if value is None or pd.isna(value) or value == "" or str(value).strip() == "":
         return 0.0
     
     # Convert to string and clean
     value_str = str(value).strip()
     
+    # If it's already "0" or empty after strip, return 0
+    if not value_str or value_str == "0":
+        return 0.0
+    
     # Remove currency symbols and clean
     value_str = re.sub(r'[$£€¥₹,\s]', '', value_str)
-    value_str = re.sub(r'[()]', '', value_str)  # Remove parentheses
     
     # Handle negative values in parentheses format
     if '(' in str(value) and ')' in str(value):
+        value_str = re.sub(r'[()]', '', value_str)
         value_str = '-' + value_str
+    else:
+        value_str = re.sub(r'[()]', '', value_str)
+    
+    # If empty after cleaning, return 0
+    if not value_str or value_str == '-':
+        return 0.0
     
     try:
-        return float(value_str) if value_str else 0.0
-    except ValueError:
+        return float(value_str)
+    except (ValueError, TypeError):
         return 0.0
 
 def parse_date(date_str: str) -> datetime:
@@ -105,12 +114,10 @@ with st.sidebar:
     st.header("⚙️ Settings")
     
     # File format selection
-    supported_formats = st.multiselect(
-        "📁 Supported File Formats",
-        options=["PDF", "PNG", "JPG", "JPEG"],
-        default=["PDF"],
-        disabled=True
-    )
+    st.markdown("**📁 Supported Formats:**")
+    st.markdown("- PDF files")
+    st.markdown("- PNG images") 
+    st.markdown("- JPG/JPEG images")
     
     # Currency selection
     currency_symbol = st.selectbox(
@@ -346,61 +353,91 @@ if uploaded_file is not None:
                         f"{currency_symbol}{closing_balance:,.2f}"
                     )
                 
-                # Enhanced Visualizations
+                # Enhanced Visualizations using Streamlit's built-in charts
                 st.subheader("📊 Transaction Analysis")
                 
                 tab1, tab2, tab3 = st.tabs(["💹 Flow Analysis", "📈 Balance Trend", "🏷️ Categories"])
                 
                 with tab1:
                     # Debit vs Credit comparison
-                    flow_fig = go.Figure(data=[
-                        go.Bar(name='Credits', x=['Inflow'], y=[total_credits], marker_color='green'),
-                        go.Bar(name='Debits', x=['Outflow'], y=[total_debits], marker_color='red')
-                    ])
-                    flow_fig.update_layout(
-                        title="Cash Flow Overview",
-                        yaxis_title=f"Amount ({currency_symbol})",
-                        barmode='group'
-                    )
-                    st.plotly_chart(flow_fig, use_container_width=True)
+                    st.markdown("**💰 Cash Flow Overview**")
+                    
+                    # Create comparison metrics
+                    flow_col1, flow_col2, flow_col3 = st.columns(3)
+                    with flow_col1:
+                        st.metric("💚 Total Credits (Inflow)", f"{currency_symbol}{total_credits:,.2f}")
+                    with flow_col2:
+                        st.metric("❤️ Total Debits (Outflow)", f"{currency_symbol}{total_debits:,.2f}")
+                    with flow_col3:
+                        net_color = "normal" if net_flow >= 0 else "inverse"
+                        st.metric("🔄 Net Flow", f"{currency_symbol}{net_flow:,.2f}")
+                    
+                    # Simple bar chart for flow comparison
+                    if total_credits > 0 or total_debits > 0:
+                        flow_data = pd.DataFrame({
+                            'Credits': [total_credits],
+                            'Debits': [total_debits]
+                        })
+                        st.bar_chart(flow_data)
                 
                 with tab2:
                     if len(df) > 1:
-                        # Balance trend over time
-                        balance_fig = px.line(
-                            df, 
-                            x='date', 
-                            y='balance',
-                            title='Account Balance Trend',
-                            markers=True
-                        )
-                        balance_fig.update_layout(
-                            xaxis_title="Date",
-                            yaxis_title=f"Balance ({currency_symbol})"
-                        )
-                        st.plotly_chart(balance_fig, use_container_width=True)
+                        # Balance trend over time using Streamlit line chart
+                        st.markdown("**📈 Account Balance Trend**")
+                        
+                        # Prepare data for line chart
+                        balance_chart_data = df[['date', 'balance']].copy()
+                        balance_chart_data = balance_chart_data.set_index('date')
+                        
+                        st.line_chart(balance_chart_data['balance'])
+                        
+                        # Show balance statistics
+                        min_balance = df['balance'].min()
+                        max_balance = df['balance'].max()
+                        avg_balance = df['balance'].mean()
+                        
+                        stat_col1, stat_col2, stat_col3 = st.columns(3)
+                        with stat_col1:
+                            st.metric("📉 Minimum Balance", f"{currency_symbol}{min_balance:,.2f}")
+                        with stat_col2:
+                            st.metric("📊 Average Balance", f"{currency_symbol}{avg_balance:,.2f}")
+                        with stat_col3:
+                            st.metric("📈 Maximum Balance", f"{currency_symbol}{max_balance:,.2f}")
                     else:
                         st.info("📊 Balance trend requires more than one transaction")
                 
                 with tab3:
                     # Transaction categories (simple keyword-based)
-                    st.info("🔄 Advanced categorization coming soon! Currently showing transaction descriptions.")
+                    st.markdown("**🏷️ Transaction Analysis**")
                     
                     # Show top descriptions
                     if len(df) > 0:
                         desc_counts = df['description'].value_counts().head(10)
                         if not desc_counts.empty:
-                            fig_cat = px.bar(
-                                x=desc_counts.values,
-                                y=desc_counts.index,
-                                orientation='h',
-                                title="Top Transaction Types"
-                            )
-                            fig_cat.update_layout(
-                                xaxis_title="Frequency",
-                                yaxis_title="Transaction Type"
-                            )
-                            st.plotly_chart(fig_cat, use_container_width=True)
+                            st.markdown("**Most Frequent Transaction Types:**")
+                            
+                            # Display as a simple table
+                            freq_df = pd.DataFrame({
+                                'Transaction Type': desc_counts.index,
+                                'Frequency': desc_counts.values
+                            })
+                            st.dataframe(freq_df, use_container_width=True)
+                            
+                            # Simple bar chart
+                            st.bar_chart(desc_counts)
+                        
+                        # Transaction count by type
+                        st.markdown("**📊 Transaction Statistics:**")
+                        debit_count = len(df[df['debit'] > 0])
+                        credit_count = len(df[df['credit'] > 0])
+                        
+                        count_col1, count_col2, count_col3 = st.columns(3)
+                        with count_col1:
+                            st.metric("📤 Debit Transactions", debit_count)
+                        with count_col2:
+                            st.metric("📥 Credit Transactions", credit_count)
+                        with count_col3:
+                            st.metric("📋 Total Transactions", len(df))
                 
                 # Download functionality
                 st.subheader("💾 Export Data")
@@ -429,11 +466,13 @@ if uploaded_file is not None:
                 
         except Exception as e:
             st.error(f"❌ Error processing statement data: {str(e)}")
-            st.json(extracted_data)  # Show raw data for debugging
+            with st.expander("🔍 View Raw Data for Debugging"):
+                st.json(extracted_data)
     
     elif extracted_data:
         st.warning("⚠️ Data extracted but no transactions found.")
-        st.json(extracted_data)
+        with st.expander("🔍 View Raw Extracted Data"):
+            st.json(extracted_data)
     
     else:
         st.error("❌ Failed to extract data from the uploaded file. Please try again or check if the file format is supported.")
