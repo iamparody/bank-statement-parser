@@ -18,33 +18,46 @@ class Statement(BaseModel):
     transactions: List[Transaction] = Field(description="List of transaction entries")
 
 # Streamlit app UI
-st.title("Bank Statement Parser")
+st.title("🏦 Bank Statement Parser")
 
 # Get API key from Streamlit secrets
 api_key = st.secrets["LLAMA_API_KEY"]
 
-# Initialize the extractor (cache this to avoid re-initializing on every rerun)
+# Initialize the extractor and safely get/create the agent
 @st.cache_resource
 def get_agent():
-    import streamlit as st
-    extractor = LlamaExtract(api_key=st.secrets["LLAMA_API_KEY"])
+    extractor = LlamaExtract(api_key=api_key)
+
     config = ExtractConfig(
         extraction_target=ExtractTarget.PER_DOC,
         extraction_mode=ExtractMode.MULTIMODAL
     )
-    agent = extractor.create_agent(
-        name="bank_statement_parser_final",
-        data_schema=Statement,
-        config=config
-    )
+
+    agent_name = "bank_statement_parser_final"
+
+    try:
+        # Try to create agent
+        agent = extractor.create_agent(
+            name=agent_name,
+            data_schema=Statement,
+            config=config
+        )
+    except Exception as e:
+        if "already exists" in str(e):
+            # Reuse existing agent
+            agent = extractor.get_agent_by_name(agent_name)
+        else:
+            raise e
+
     return agent
 
 agent = get_agent()
 
-uploaded_file = st.file_uploader("Upload your bank statement PDF", type=["pdf"])
+# Upload PDF
+uploaded_file = st.file_uploader("📄 Upload your bank statement PDF", type=["pdf"])
 
 if uploaded_file is not None:
-    with st.spinner("Extracting transactions..."):
+    with st.spinner("🔍 Extracting transactions..."):
         # Save uploaded PDF temporarily
         with open("temp.pdf", "wb") as f:
             f.write(uploaded_file.getbuffer())
@@ -56,7 +69,7 @@ if uploaded_file is not None:
         if extracted_data and "transactions" in extracted_data:
             statement = Statement.model_validate(extracted_data)
 
-            st.success(f"Found {len(statement.transactions)} transactions!")
+            st.success(f"✅ Found {len(statement.transactions)} transactions!")
 
             # Convert to DataFrame for display and charts
             df = pd.DataFrame([txn.model_dump() for txn in statement.transactions])
@@ -65,6 +78,7 @@ if uploaded_file is not None:
             for col in ["debit", "credit", "balance"]:
                 df[col] = df[col].str.replace(",", "").fillna("0").astype(float)
 
+            st.subheader("📊 Transactions Table")
             st.dataframe(df)
 
             # Summary
@@ -72,13 +86,14 @@ if uploaded_file is not None:
             total_credit = df["credit"].sum()
             closing_balance = df["balance"].iloc[-1]
 
-            st.markdown(f"**Summary:**")
-            st.write(f"- Total Debit: ${total_debit:,.2f}")
-            st.write(f"- Total Credit: ${total_credit:,.2f}")
-            st.write(f"- Closing Balance: ${closing_balance:,.2f}")
+            st.subheader("📌 Summary")
+            st.write(f"- Total Debit: **${total_debit:,.2f}**")
+            st.write(f"- Total Credit: **${total_credit:,.2f}**")
+            st.write(f"- Closing Balance: **${closing_balance:,.2f}**")
 
             # Charts
+            st.subheader("📈 Debit vs Credit")
             st.bar_chart(data=df[["debit", "credit"]].sum().to_frame().T)
 
         else:
-            st.warning("No transactions found in the uploaded PDF.")
+            st.warning("⚠️ No transactions found in the uploaded PDF.")
