@@ -1,6 +1,7 @@
 import streamlit as st
 from llama_cloud_services import LlamaExtract
 from llama_cloud_services.extract import ExtractConfig, ExtractTarget, ExtractMode
+from llama_cloud_services.core.api_error import ApiError
 from pydantic import BaseModel, Field
 from typing import List
 import pandas as pd
@@ -36,19 +37,18 @@ def get_agent():
     agent_name = "bank_statement_parser_final"
 
     try:
-        # Try to create agent
+        # Try to create a new agent
         agent = extractor.create_agent(
             name=agent_name,
             data_schema=Statement,
             config=config
         )
-    except Exception as e:
-        if "already exists" in str(e):
-            # Reuse existing agent
+    except ApiError as e:
+        # Check if agent already exists
+        if e.status_code == 409 and "already exists" in str(e.body).lower():
             agent = extractor.get_agent_by_name(agent_name)
         else:
-            raise e
-
+            raise e  # Raise if it's a different error
     return agent
 
 agent = get_agent()
