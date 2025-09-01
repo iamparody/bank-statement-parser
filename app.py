@@ -510,7 +510,7 @@ if uploaded_file is not None:
             # Download functionality
             st.subheader("💾 Export Data")
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 csv_data = df.to_csv(index=False)
                 st.download_button(
