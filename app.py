@@ -1,7 +1,6 @@
 import streamlit as st
 from llama_cloud_services import LlamaExtract
 from llama_cloud_services.extract import ExtractConfig, ExtractTarget, ExtractMode
-from llama_cloud_services.extract.errors import ApiError  # ✅ CORRECTED
 from pydantic import BaseModel, Field
 from typing import List
 import pandas as pd
@@ -24,11 +23,10 @@ st.title("🏦 Bank Statement Parser")
 # Get API key from Streamlit secrets
 api_key = st.secrets["LLAMA_API_KEY"]
 
-# Initialize the extractor and safely get/create the agent
+# Cache the agent creation
 @st.cache_resource
 def get_agent():
     extractor = LlamaExtract(api_key=api_key)
-
     config = ExtractConfig(
         extraction_target=ExtractTarget.PER_DOC,
         extraction_mode=ExtractMode.MULTIMODAL
@@ -37,20 +35,16 @@ def get_agent():
     agent_name = "bank_statement_parser_final"
 
     try:
-        # Try to create a new agent
+        agent = extractor.get_agent(agent_name)
+    except Exception:
         agent = extractor.create_agent(
             name=agent_name,
             data_schema=Statement,
             config=config
         )
-    except ApiError as e:
-        # Check if agent already exists
-        if e.status_code == 409 and "already exists" in str(e.body).lower():
-            agent = extractor.get_agent_by_name(agent_name)
-        else:
-            raise e  # Raise if it's a different error
     return agent
 
+# ✅ Initialize agent
 agent = get_agent()
 
 # Upload PDF
@@ -62,7 +56,6 @@ if uploaded_file is not None:
         with open("temp.pdf", "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-        # Extract the data
         result = agent.extract("temp.pdf")
         extracted_data = result.data
 
@@ -71,7 +64,6 @@ if uploaded_file is not None:
 
             st.success(f"✅ Found {len(statement.transactions)} transactions!")
 
-            # Convert to DataFrame for display and charts
             df = pd.DataFrame([txn.model_dump() for txn in statement.transactions])
 
             # Clean numeric columns to floats for plotting
@@ -91,7 +83,6 @@ if uploaded_file is not None:
             st.write(f"- Total Credit: **${total_credit:,.2f}**")
             st.write(f"- Closing Balance: **${closing_balance:,.2f}**")
 
-            # Charts
             st.subheader("📈 Debit vs Credit")
             st.bar_chart(data=df[["debit", "credit"]].sum().to_frame().T)
 
