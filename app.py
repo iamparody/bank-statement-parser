@@ -190,8 +190,12 @@ if not agent:
 # ---------------------------
 
 @st.cache_data(show_spinner="🔍 Extracting data from your statement...")
-def extract_statement_data(file_hash: str, file_content: bytes, filename: str) -> dict:
-    """Extract data from uploaded statement file using file hash for caching"""
+def extract_statement_data(file_hash: str, *, file_content: bytes, filename: str) -> dict:
+    """Extract data from uploaded statement file using file hash for caching.
+    
+    The file_content and filename parameters are marked with an asterisk to
+    make them keyword-only, preventing them from being part of the cache key.
+    """
     try:
         # Create temporary file with proper extension
         file_extension = os.path.splitext(filename)[1].lower()
@@ -246,7 +250,7 @@ if uploaded_file is not None:
     else:
         with st.spinner("🔄 Processing your statement..."):
             # Pass file hash and bytes separately to fix caching issue
-            extracted_data = extract_statement_data(file_hash, file_bytes, uploaded_file.name)
+            extracted_data = extract_statement_data(file_hash, file_content=file_bytes, filename=uploaded_file.name)
             if extracted_data:
                 st.session_state["last_file_hash"] = file_hash
                 st.session_state["cached_data"] = extracted_data
@@ -502,28 +506,28 @@ if uploaded_file is not None:
                             st.metric("📥 Credit Transactions", credit_count)
                         with count_col3:
                             st.metric("📋 Total Transactions", len(df))
-                
-                # Download functionality
-                st.subheader("💾 Export Data")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    csv_data = df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download as CSV",
-                        data=csv_data,
-                        file_name=f"bank_statement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
-                
-                with col2:
-                    json_data = df.to_json(orient='records', date_format='iso')
-                    st.download_button(
-                        label="📥 Download as JSON",
-                        data=json_data,
-                        file_name=f"bank_statement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json"
-                    )
+            
+            # Download functionality
+            st.subheader("💾 Export Data")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                csv_data = df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download as CSV",
+                    data=csv_data,
+                    file_name=f"bank_statement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+            
+            with col2:
+                json_data = df.to_json(orient='records', date_format='iso')
+                st.download_button(
+                    label="📥 Download as JSON",
+                    data=json_data,
+                    file_name=f"bank_statement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json"
+                )
             
             else:
                 st.warning("⚠️ No transactions found in the extracted data.")
