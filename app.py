@@ -529,7 +529,7 @@ if uploaded_file is not None:
                     mime="application/json"
                 )
             
-         else:
+    else:
             st.warning("⚠️ No transactions found in the extracted data.")
                 
         except Exception as e:
