@@ -529,8 +529,8 @@ if uploaded_file is not None:
                     mime="application/json"
                 )
             
-            else:
-                st.warning("⚠️ No transactions found in the extracted data.")
+         else:
+            st.warning("⚠️ No transactions found in the extracted data.")
                 
         except Exception as e:
             st.error(f"❌ Error processing statement data: {str(e)}")
