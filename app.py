@@ -66,9 +66,12 @@ if uploaded_file is not None:
 
             df = pd.DataFrame([txn.model_dump() for txn in statement.transactions])
 
-            # Clean numeric columns to floats for plotting
+
             for col in ["debit", "credit", "balance"]:
-                df[col] = df[col].str.replace(",", "").fillna("0").astype(float)
+                col_str = df[col].astype(str).fillna("0")
+                col_str = col_str.str.replace(",", "")
+                df[col] = pd.to_numeric(col_str, errors="coerce").fillna(0.0)
+
 
             st.subheader("📊 Transactions Table")
             st.dataframe(df)
