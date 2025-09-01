@@ -177,11 +177,12 @@ if not agent:
 # ---------------------------
 
 @st.cache_data(show_spinner="🔍 Extracting data from your statement...")
-def extract_statement_data(file_hash: str, *, file_content: bytes, filename: str) -> dict:
+def extract_statement_data(file_hash: str, *, _file_content: bytes, _filename: str) -> dict:
+
     try:
         file_extension = os.path.splitext(filename)[1].lower()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
-            tmp_file.write(file_content)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(_filename)[1].lower()) as tmp_file:
+            tmp_file.write(_file_content)
             tmp_file_path = tmp_file.name
         
         try:
