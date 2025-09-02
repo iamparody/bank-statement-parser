@@ -11,6 +11,14 @@ from datetime import datetime
 import re
 import plotly.graph_objects as go
 
+# Fallback parser import
+try:
+    from bank_parser import extract_text_from_pdf, extract_transactions
+    FALLBACK_PARSER_AVAILABLE = True
+except ImportError:
+    FALLBACK_PARSER_AVAILABLE = False
+    st.warning("⚠️ Fallback parser not available. Large PDFs may not extract completely.")
+
 # Optional page-splitting fallback if the extractor struggles with very large PDFs.
 # Will be used only if installed; otherwise safely ignored.
 try:
@@ -129,7 +137,12 @@ with st.sidebar:
     st.markdown("**📁 Supported Formats:**\n- PDF files\n- PNG images\n- JPG/JPEG images")
     currency_symbol = st.selectbox("💱 Currency Symbol", options=["$", "£", "€", "¥", "₹"], index=0)
     date_format = st.selectbox("📅 Expected Date Format", options=["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD", "Auto-detect"], index=3)
-    chunk_pages = st.slider("🧩 PDF chunk size (pages)", 3, 15, 6, help="If needed, we’ll split very large PDFs into N-page chunks for extraction.")
+    chunk_pages = st.slider("🧩 PDF chunk size (pages)", 3, 15, 6, help="If needed, we'll split very large PDFs into N-page chunks for extraction.")
+    
+    # Fallback settings
+    st.markdown("### 🔄 Fallback Parser")
+    use_fallback_threshold = st.slider("Transaction threshold for fallback", 10, 100, 50, 
+                                     help="If extracted transactions are below this number, use fallback parser")
     st.caption("Tip: Larger chunks = fewer API calls, smaller chunks = more resilient on heavy PDFs.")
 
 # ---------------------------
@@ -200,9 +213,9 @@ def extract_statement_data(file_hash: str, *, _file_content: bytes, _filename: s
             try:
                 result = agent.extract(temp_path, config=base_config)
                 data = result.data
-                # If service returns already-merged, great. If not, we’ll merge below.
+                # If service returns already-merged, great. If not, we'll merge below.
                 if isinstance(data, dict) and "transactions" in data:
-                    return data
+                    return {"data": data, "temp_path": temp_path}
             except Exception:
                 # fall back to manual chunking below
                 pass
@@ -240,25 +253,19 @@ def extract_statement_data(file_hash: str, *, _file_content: bytes, _filename: s
                             pass
                 if merged_transactions:
                     merged_meta["transactions"] = merged_transactions
-                    return merged_meta
+                    return {"data": merged_meta, "temp_path": temp_path}
                 # if chunking produced nothing, fall back to doc-level
             # Last resort: PER_DOC
             result = agent.extract(temp_path)
-            return result.data
+            return {"data": result.data, "temp_path": temp_path}
 
         # Non-PDF or no per-page requested → simple path
         result = agent.extract(temp_path)
-        return result.data
+        return {"data": result.data, "temp_path": temp_path}
 
     except Exception as e:
         st.error(f"❌ Extraction failed: {e}")
-        return None
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.unlink(temp_path)
-            except Exception:
-                pass
+        return {"data": None, "temp_path": temp_path}
 
 # ---------------------------
 # 🔹 Uploader
@@ -285,13 +292,45 @@ if uploaded_file is not None:
 
     # Cache-aware call: underscores prevent hashing of the heavy params
     with st.spinner("🔄 Processing your statement..."):
-        extracted_data = extract_statement_data(
+        extraction_result = extract_statement_data(
             file_hash,
             _file_content=file_bytes,
             _filename=uploaded_file.name,
             per_page=True,                  # enable large-PDF-optimized path
             per_page_chunk=chunk_pages      # sidebar-configurable
         )
+
+    extracted_data = extraction_result.get("data") if extraction_result else None
+    temp_path = extraction_result.get("temp_path") if extraction_result else None
+
+    # ---------------------------
+    # 🔹 Fallback Parser Logic
+    # ---------------------------
+    if extracted_data and isinstance(extracted_data, dict) and "transactions" in extracted_data:
+        original_count = len(extracted_data.get("transactions", []))
+        
+        # Check if we should use fallback parser
+        if FALLBACK_PARSER_AVAILABLE and original_count < use_fallback_threshold and temp_path:
+            with st.spinner("🔄 Using fallback parser for better extraction..."):
+                try:
+                    text = extract_text_from_pdf(temp_path)
+                    fallback_transactions = extract_transactions(text)
+                    
+                    if len(fallback_transactions) > original_count:
+                        st.success(f"✅ Fallback parser found {len(fallback_transactions)} transactions vs {original_count} from primary extraction")
+                        extracted_data["transactions"] = fallback_transactions
+                    else:
+                        st.info(f"ℹ️ Primary extraction ({original_count} transactions) was sufficient")
+                        
+                except Exception as e:
+                    st.warning(f"⚠️ Fallback parser failed: {e}")
+
+    # Clean up temp file
+    if temp_path and os.path.exists(temp_path):
+        try:
+            os.unlink(temp_path)
+        except Exception:
+            pass
 
     # ---------------------------
     # 🔹 Data Processing
